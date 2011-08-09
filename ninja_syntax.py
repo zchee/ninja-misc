@@ -22,7 +22,7 @@ class Writer(object):
             self.output.write('# ' + line + '\n')
 
     def variable(self, key, value, indent=0):
-        self._line('%s%s = %s' % ('  ' * indent, key, value), indent)
+        self._line('%s = %s' % (key, value), indent)
 
     def rule(self, name, command, description=None, depfile=None):
         self._line('rule %s' % name)
@@ -55,12 +55,28 @@ class Writer(object):
         return outputs
 
     def _line(self, text, indent=0):
+        """Write 'text' word-wrapped at self.width characters."""
+        leading_space = '  ' * indent
         while len(text) > self.width:
-            space = text.rfind(' ', 0, self.width - 4)
-            assert space != -1  # TODO: handle if no space found.
-            self.output.write(text[0:space] + ' $\n')
-            text = '  ' * (indent+2) + text[space:].lstrip()
-        self.output.write(text + '\n')
+            # The text is too wide; wrap if possible.
+
+            # Find the rightmost space that would obey our width constraint.
+            available_space = self.width - len(leading_space) - len(' $')
+            space = text.rfind(' ', 0, available_space)
+            if space < 0:
+                # No such space; just use the first space we can find.
+                space = text.find(' ', available_space)
+            if space < 0:
+                # Give up on breaking.
+                break
+
+            self.output.write(leading_space + text[0:space] + ' $\n')
+            text = text[space+1:]
+
+            # Subsequent lines are continuations, so indent them.
+            leading_space = '  ' * (indent+2)
+
+        self.output.write(leading_space + text + '\n')
 
     def _as_list(self, input):
         if input is None:
@@ -68,3 +84,11 @@ class Writer(object):
         if isinstance(input, list):
             return input
         return [input]
+
+
+def escape(string):
+    """Escape a string such that it can be embedded into a Ninja file without
+    further interpretation."""
+    assert '\n' not in string, 'Ninja syntax does not allow newlines'
+    # We only have one special metacharacter: '$'.
+    return string.replace('$', '$$')
